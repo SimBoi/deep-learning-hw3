@@ -80,7 +80,7 @@ class Trainer(abc.ABC):
                 self.model.load_state_dict(saved_state["model_state"])
 
         for epoch in range(num_epochs):
-            save_checkpoint = False
+            save_checkpoint = True
             verbose = False  # pass this to train/test_epoch.
             if epoch % print_every == 0 or epoch == num_epochs - 1:
                 verbose = True
@@ -93,9 +93,18 @@ class Trainer(abc.ABC):
             #  - Implement early stopping. This is a very useful and
             #    simple regularization technique that is highly recommended.
             # ====== YOUR CODE: ======
-            
-            raise NotImplementedError()
+            train_res = self.train_epoch(dl_train, **kw)
+            test_res = self.test_epoch(dl_test, **kw)
 
+            train_loss += train_res.losses
+            train_acc += [train_res.accuracy]
+            test_loss += test_res.losses
+            test_acc += [test_res.accuracy]
+
+            train_result = EpochResult(losses=train_res.losses, accuracy=train_res.accuracy)
+            test_result = EpochResult(losses=test_res.losses, accuracy=test_res.accuracy)
+
+            actual_num_epochs += 1
             # ========================
 
             # Save model checkpoint if requested
@@ -223,9 +232,7 @@ class RNNTrainer(Trainer):
     def train_epoch(self, dl_train: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
         # ====== YOUR CODE: ======
-        
-        self.hidden_state = None    
-            
+        self.hidden_state = None
         # ========================
         return super().train_epoch(dl_train, **kw)
 
@@ -250,7 +257,14 @@ class RNNTrainer(Trainer):
         #  - Update params
         #  - Calculate number of correct char predictions
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.optimizer.zero_grad()
+        y_prop, self.hidden_state = self.model(x, self.hidden_state)
+        self.hidden_state = self.hidden_state.detach()
+        y_indexs = y_prop.argmax(dim=2)  # (B,S,1) --> (B,S)
+        num_correct = y.eq(y_indexs).sum()
+        loss = self.loss_fn(torch.transpose(y_prop, 1, 2), y)
+        loss.backward(retain_graph=True)
+        self.optimizer.step()
         # ========================
 
         # Note: scaling num_correct by seq_len because each sample has seq_len
@@ -270,7 +284,11 @@ class RNNTrainer(Trainer):
             #  - Loss calculation
             #  - Calculate number of correct predictions
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            y_prop, self.hidden_state = self.model(x, self.hidden_state)
+            self.hidden_state = self.hidden_state.detach()
+            y_indexs = y_prop.argmax(dim=2)  # (B,S,1) --> (B,S)
+            num_correct = y.eq(y_indexs).sum()
+            loss = self.loss_fn(torch.transpose(y_prop, 1, 2), y)
             # ========================
 
         return BatchResult(loss.item(), num_correct.item() / seq_len)
@@ -282,7 +300,11 @@ class VAETrainer(Trainer):
         x = x.to(self.device)  # Image batch (N,C,H,W)
         # TODO: Train a VAE on one batch.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.optimizer.zero_grad()
+        xr, mu, log_sigma2 = self.model.forward(x)
+        loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
+        loss.backward()
+        self.optimizer.step()
         # ========================
 
         return BatchResult(loss.item(), 1 / data_loss.item())
@@ -294,7 +316,8 @@ class VAETrainer(Trainer):
         with torch.no_grad():
             # TODO: Evaluate a VAE on one batch.
             # ====== YOUR CODE: ======
-            raise NotImplementedError()    
+            xr, mu, log_sigma2 = self.model.forward(x)
+            loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
             # ========================
 
         return BatchResult(loss.item(), 1 / data_loss.item())

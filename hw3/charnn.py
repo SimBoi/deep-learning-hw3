@@ -23,7 +23,12 @@ def char_maps(text: str):
     #  It's best if you also sort the chars before assigning indices, so that
     #  they're in lexical order.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    all_chars = set(text)
+    all_chars = sorted(all_chars)
+    indices = list(range(len(all_chars)))
+
+    char_to_idx = dict(zip(all_chars, indices))
+    idx_to_char = dict(zip(indices, all_chars))
     # ========================
     return char_to_idx, idx_to_char
 
@@ -39,7 +44,12 @@ def remove_chars(text: str, chars_to_remove):
     """
     # TODO: Implement according to the docstring.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    n_removed = 0
+    text_clean = text
+    for char in text_clean:
+        if char in chars_to_remove:
+            text_clean.replace(char, '')
+            n_removed += 1
     # ========================
     return text_clean, n_removed
 
@@ -59,7 +69,10 @@ def chars_to_onehot(text: str, char_to_idx: dict) -> Tensor:
     """
     # TODO: Implement the embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    result = torch.zeros(len(text), len(char_to_idx), dtype=torch.int8)
+    for i, char in enumerate(text):
+        ind = char_to_idx[char]
+        result[i, ind] = 1
     # ========================
     return result
 
@@ -76,7 +89,8 @@ def onehot_to_chars(embedded_text: Tensor, idx_to_char: dict) -> str:
     """
     # TODO: Implement the reverse-embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    indexs = torch.argmax(embedded_text, dim=1)
+    result = ''.join(idx_to_char[idx.item()] for idx in indexs)
     # ========================
     return result
 
@@ -105,7 +119,19 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int, device
     #  3. Create the labels tensor in a similar way and convert to indices.
     #  Note that no explicit loops are required to implement this function.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    total_length = len(text)
+    N = (total_length - 1) // seq_len
+    actual_length = N * seq_len
+    V = len(char_to_idx)
+
+    embedded_text = chars_to_onehot(text[:actual_length + 1], char_to_idx).to(device)
+    embedded_samples = embedded_text[:-1]
+    embedded_labels = embedded_text[1:]
+
+    samples = torch.reshape(embedded_samples, (N, seq_len, V)).to(device)
+
+    labels = embedded_labels.argmax(dim=1)
+    labels = torch.reshape(labels, (N, seq_len)).to(device)
     # ========================
     return samples, labels
 
@@ -121,7 +147,7 @@ def hot_softmax(y, dim=0, temperature=1.0):
     """
     # TODO: Implement based on the above.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    result = torch.nn.functional.softmax(y * (1.0 / temperature), dim=dim)
     # ========================
     return result
 
@@ -157,7 +183,16 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     #  necessary for this. Best to disable tracking for speed.
     #  See torch.no_grad().
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    with torch.no_grad():
+        my_batch = torch.unsqueeze(chars_to_onehot(start_sequence, char_to_idx), dim=0).to(device, dtype=torch.float)
+        x0 = my_batch
+        state = None
+        while len(out_text) < n_chars:
+            y, state = model(x0, state)
+            ch_index = torch.multinomial(hot_softmax(y[0, -1, :], temperature=T), 1)[0].item()
+            pred_char = idx_to_char[ch_index]
+            out_text += pred_char
+            x0 = torch.unsqueeze(chars_to_onehot(pred_char, char_to_idx), dim=0).to(device, dtype=torch.float)
     # ========================
 
     return out_text
@@ -190,7 +225,11 @@ class SequenceBatchSampler(torch.utils.data.Sampler):
         #  you can drop it.
         idx = None  # idx should be a 1-d list of indices.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        idx = []
+        num_of_batches = len(self.dataset) // self.batch_size
+        for i in range(num_of_batches):
+            for j in range(self.batch_size):
+                idx.append((j)*(num_of_batches-1) + j + i)
         # ========================
         return iter(idx)
 
